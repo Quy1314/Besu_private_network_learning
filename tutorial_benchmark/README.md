@@ -157,7 +157,7 @@ npm install --save-dev @hyperledger/caliper-cli @hyperledger/caliper-core
 ```
 ## 4️⃣ Bind Caliper với Besu
 ```bash
-npx caliper bind --caliper-bind-sut besu:latest
+npx caliper bind --caliper-bind-sut ethereum:latest
 ```
 ## 5️⃣ Tạo benchmark
 * Vào folder Caliper-Benchmark
