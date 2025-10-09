@@ -1,243 +1,136 @@
-# Hướng dẫn triển khai Private Besu Network và Benchmark với Hyperledger Caliper
-## 1️⃣ Tạo Private Besu Network với Docker Compose
-### 1.1 Cấu trúc thư mục
+# Hướng dẫn benchmark cơ bản Hyperledger Caliper trên Besu bằng quorum-dev-quickstart
+## Tải docker compose, quorum-dev-quickstart, nodejs 16 về
 ```bash
-Besu_private_network_learning/
-├─ caliper-benchmark/
-│  ├─ benchmark.yaml
-│  ├─ network.yaml
-│  └─ simpleTransfer.js
-├─ data-central/
-├─ data-bank-a/
-├─ data-bank-b/
-├─ data-bank-c/
-├─ data-bank-d/
-└─ docker-compose.yml
-
+docker compose version //Kiểm tra phiên bản docker compose
+node -v //Kiểm tra phiên bản node js
+npx quorum-dev-quickstart
 ```
-
-### 1.2 docker-compose.yml mẫu (5 node: central + 4 bank)
+* Trong thư mục config chứa source code Besu, chọn file config.toml và thêm cờ (flag).
 ```bash
-version: '3.7'
-services:
-  central-bank:
-    image: hyperledger/besu:latest
-    container_name: central-bank
-    command: >
-      besu --network-id 1337
-           --genesis-file=/opt/besu/genesis.json
-           --data-path=/var/lib/besu
-           --rpc-http-enabled
-           --rpc-http-host=0.0.0.0
-           --rpc-http-port=8545
-           --rpc-ws-enabled
-           --rpc-ws-port=8546
-           --host-allowlist=*
-           --min-gas-price=0
-    ports:
-      - 8545:8545
-      - 8546:8546
-      - 30303:30303
-    volumes:
-      - ./data-central:/var/lib/besu
-      - ./genesis.json:/opt/besu/genesis.json
-
-  bank-a:
-    image: hyperledger/besu:latest
-    container_name: bank-a
-    command: >
-      besu --network-id 1337
-           --genesis-file=/opt/besu/genesis.json
-           --data-path=/var/lib/besu
-           --rpc-http-enabled
-           --rpc-http-port=8545
-           --host-allowlist=*
-    ports:
-      - 8547:8545
-      - 30304:30303
-    volumes:
-      - ./data-bank-a:/var/lib/besu
-      - ./genesis.json:/opt/besu/genesis.json
-
-  bank-b:
-    image: hyperledger/besu:latest
-    container_name: bank-b
-    command: >
-      besu --network-id 1337
-           --genesis-file=/opt/besu/genesis.json
-           --data-path=/var/lib/besu
-           --rpc-http-enabled
-           --rpc-http-port=8545
-           --host-allowlist=*
-    ports:
-      - 8548:8545
-      - 30305:30303
-    volumes:
-      - ./data-bank-b:/var/lib/besu
-      - ./genesis.json:/opt/besu/genesis.json
-
-  bank-c:
-    image: hyperledger/besu:latest
-    container_name: bank-c
-    command: >
-      besu --network-id 1337
-           --genesis-file=/opt/besu/genesis.json
-           --data-path=/var/lib/besu
-           --rpc-http-enabled
-           --rpc-http-port=8545
-           --host-allowlist=*
-    ports:
-      - 8549:8545
-      - 30306:30303
-    volumes:
-      - ./data-bank-c:/var/lib/besu
-      - ./genesis.json:/opt/besu/genesis.json
-
-  bank-d:
-    image: hyperledger/besu:latest
-    container_name: bank-d
-    command: >
-      besu --network-id 1337
-           --genesis-file=/opt/besu/genesis.json
-           --data-path=/var/lib/besu
-           --rpc-http-enabled
-           --rpc-http-port=8545
-           --host-allowlist=*
-    ports:
-      - 8550:8545
-      - 30307:30303
-    volumes:
-      - ./data-bank-d:/var/lib/besu
-      - ./genesis.json:/opt/besu/genesis.json
+tx-pool-limit-by-account-percentage="1" 
+//Giới hạn số tx mỗi tài khoản = 1% mempool
 ```
-### 1.3 Genesis file (genesis.json) mẫu
+* Sau khi thêm cờ vào file config thì chạy docker compose bằng file run.sh.
+
+* Clone github của hyperledger-caliper-benchmarks về, sau đó tải về phiên bản mới nhất của Caliper là 0.5.0.
+```bash
+npm install --only=prod @hyperledger/caliper-cli@0.5.0
 ```
+* Trong thư mục caliper-benchmarks vừa tạo, tạo một file mới tên là config.json, là file cho Caliper biết cần làm gì.
+* Sau khi tạo file json thì nhập thông tin của file json vào **(lưu ý: nhớ bỏ comment vì json không cho phép comment)**.
+```json
 {
-  "config": {
-    "chainId": 1337,
-    "constantinopleFixBlock": 0,
-    "homesteadBlock": 0,
-    "eip150Block": 0,
-    "eip155Block": 0,
-    "eip158Block": 0,
-    "byzantiumBlock": 0,
-    "clique": {
-      "period": 2,
-      "epoch": 30000
-    }
+  "caliper": {
+    // Khai báo blockchain backend mà Caliper sẽ benchmark
+    // Ở đây là "ethereum" (có thể là Besu, GoQuorum, Geth, v.v.)
+    "blockchain": "ethereum"
   },
-  "nonce": "0x0",
-  "timestamp": "0x5F5B8D80",
-  "extraData": "0x",
-  "gasLimit": "0x47b760",
-  "difficulty": "0x1",
-  "mixHash": "0x0000000000000000000000000000000000000000000000000000000000000000",
-  "coinbase": "0x0000000000000000000000000000000000000000",
-  "alloc": {
-    "0xSenderAddress": { "balance": "1000000000000000000000" },
-    "0xReceiverAddress": { "balance": "1000000000000000000000" }
+  "ethereum": {
+    // Địa chỉ WebSocket endpoint của node Ethereum hoặc Besu
+    // Nếu bạn chạy Quorum Dev Quickstart thì thường là ws://localhost:8546
+    "url": "ws://localhost:8546",
+
+    // Địa chỉ của tài khoản dùng để deploy smart contract
+    "contractDeployerAddress": "0xc0A8e4D217eB85b812aeb1226fAb6F588943C2C2",
+
+    // Private key tương ứng với địa chỉ trên, để ký giao dịch deploy
+    "contractDeployerAddressPrivateKey": "0x45a915e4d0601499eb4365960e6a7a45f33493093061116b197e3240065ff2d8",
+
+    // Địa chỉ mặc định được dùng để gửi các giao dịch (TX)
+    "fromAddress": "0xc0A8e4D217eB85b812aeb1226fAb6F588943C2C2",
+
+    // Seed dùng để sinh khóa — thường không cần thiết nếu có private key
+    "fromAddressSeed": "0x8b12a749f7606741db0a4b5c912e846f346101fce9d7a632431b0bae3fc9060",
+
+    // Private key của tài khoản gửi giao dịch
+    "fromAddressPrivateKey": "0x45a915e4d0601499eb4365960e6a7a45f33493093061116b197e3240065ff2d8",
+
+    // Số block cần chờ để Caliper xem giao dịch là đã xác nhận
+    // Dùng trong môi trường thật để đảm bảo TX không bị reorg
+    "transactionConfirmationBlocks": 12,
+
+    // Khai báo các smart contract mà benchmark sẽ tương tác
+    "contracts": {
+      // Tên hợp đồng là "simple"
+      "simple": {
+        // Đường dẫn tới file chứa ABI + bytecode của contract "Simple"
+        // File này được tạo sau khi bạn compile bằng Truffle/Hardhat
+        "path": "src/ethereum/simple/simple.json",
+
+        // Cấu hình gas limit cho từng loại hành động Caliper sẽ thực hiện
+        "gas": {
+          // Gas dùng cho hàm "open" (thường là tạo tài khoản / mở kênh)
+          "open": 45000,
+          // Gas dùng cho hàm "query" (đọc dữ liệu)
+          "query": 100000,
+          // Gas dùng cho hàm "transfer" (gửi giao dịch)
+          "transfer": 70000
+        },
+
+        // ABI (Application Binary Interface) — định nghĩa các hàm contract
+        // Ở đây để trống [] vì Caliper sẽ đọc từ file simple.json ở trên
+        "abi": []
+      }
+    }
   }
 }
 ```
-* **Lưu ý: Replace 0xSenderAddress và 0xReceiverAddress bằng account bạn tạo ra.**
+* Nếu muốn tự deploy smart contract của mình thì bỏ thuộc tính ```path``` đi và thay bằng ```address```. Ở đây mình để mặc định là path tới simple.json
+* Để điều chỉnh thông số (parameters) ta vào file config.yaml theo đường dẫn ```benchmarks/scenario/simple/config.yaml```, để mô phổng hệ thống interbank thì mình sẽ điều chỉnh số worker thành 10 **(lưu ý: nên chọn worker dựa theo số nhân của máy nên là nCPU/2 hoặc nCPU/1.5)**.
+* Đây là thông số của mình dùng để mô phổng:
+```yaml
+simpleArgs: &simple-args
+  initialMoney: 10000         # Số dư ban đầu của mỗi tài khoản
+  moneyToTransfer: 100        # Số tiền mỗi giao dịch chuyển
+  numberOfAccounts: &number-of-accounts 1000  # Tổng số tài khoản được tạo
 
-## 2️⃣ Chạy network
-```bash
-docker-compose up -d
-```
-Kiểm tra container đang chạy:
-```bash
-docker ps
-```
+test:
+  name: interbank-simulation
+  description: >-
+    Benchmark mô phỏng giao dịch liên ngân hàng trên mạng consortium Besu bằng Hyperledger Caliper.
+    Bao gồm 3 giai đoạn: mở tài khoản, truy vấn, và chuyển tiền giữa các ngân hàng.
+  workers:
+    number: 10  # 10 worker ~ 10 ngân hàng song song (tối ưu cho CPU 16 nhân)
 
-## 3️⃣ Cài đặt Hyperledger Caliper
-```bash
-npm init -y
-npm install --save-dev @hyperledger/caliper-cli @hyperledger/caliper-core
-```
-## 4️⃣ Bind Caliper với Besu
-```bash
-npx caliper bind --caliper-bind-sut ethereum:latest
-```
-## 5️⃣ Tạo benchmark
-* Vào folder Caliper-Benchmark
-### 5.1 benchmark.yaml
-```bash
-name: simple-transfer
-description: Simple ETH transfer
-workers:
-  type: local
-  number: 1
-rounds:
-  - label: transfer
-    txNumber: 10
-    rateControl:
-      type: fixed-rate
-      opts:
-        tps: 1
-    workload:
-      module: ./simpleTransfer.js
-      arguments:
-        value: 1000000000000000000
-```
-### 5.2 network.yaml
-```bash
-name: besu-network
-caliper:
-  blockchain: besu
-  version: latest
-  smartContract:
-    language: solidity
-    file: ./contracts/SimpleToken.sol
-    name: SimpleToken
-    version: 1.0
-    constructor:
-      args: []
-    artifact: build/contracts/SimpleToken.json
-  deploy:
-    init:
-      txTimeout: 300
-nodes:
-  central:
-    url: http://localhost:8545
-  bank-a:
-    url: http://localhost:8547
-  bank-b:
-    url: http://localhost:8548
-  bank-c:
-    url: http://localhost:8549
-  bank-d:
-    url: http://localhost:8550
-```
-## 6️⃣ Tạo simpleTransfer.js
-```bash
-'use strict';
+  rounds:
+    # 🏦 Vòng 1: mở tài khoản
+    - label: open
+      description: >-
+        Tạo 1000 tài khoản cho các ngân hàng, mỗi tài khoản có số dư ban đầu 10,000.
+      txNumber: *number-of-accounts
+      rateControl:
+        type: fixed-rate
+        opts:
+          tps: 200           # Tổng TPS = 200 (chia đều cho 10 worker, mỗi worker ~20 TPS)
+      workload:
+        module: benchmarks/scenario/simple/open.js
+        arguments: *simple-args
 
-module.exports.info  = 'Simple ETH transfer benchmark';
+    # 📊 Vòng 2: truy vấn tài khoản
+    - label: query
+      description: >-
+        Đo hiệu năng truy vấn số dư tài khoản trong mạng consortium.
+      txNumber: *number-of-accounts
+      rateControl:
+        type: fixed-rate
+        opts:
+          tps: 400           # Tổng TPS = 400 (mỗi worker ~40 TPS)
+      workload:
+        module: benchmarks/scenario/simple/query.js
+        arguments: *simple-args
 
-module.exports.init = async function(blockchain, context, args) {
-    return;
-};
-
-module.exports.run = async function(blockchain, context, args) {
-    let tx = {
-        from: '0xSenderAddress', // replace bằng account sender
-        to: '0xReceiverAddress', // replace bằng account receiver
-        value: args.value,
-        gas: 21000
-    };
-    await blockchain.sendTransaction(tx);
-};
-
-module.exports.end = async function(blockchain, context, args) {
-    return;
-};
+    # 💸 Vòng 3: chuyển tiền liên ngân hàng
+    - label: transfer
+      description: >-
+        Mô phỏng chuyển tiền giữa các ngân hàng, mỗi giao dịch 100 đơn vị tiền.
+      txNumber: 500
+      rateControl:
+        type: fixed-rate
+        opts:
+          tps: 50            # Tổng TPS = 50 (mỗi worker ~5 TPS)
+      workload:
+        module: benchmarks/scenario/simple/transfer.js
+        arguments:
+          << : *simple-args
+          money: 100
 ```
-## 7️⃣ Chạy benchmark
-```bash
-npx caliper launch manager \
-  --caliper-benchconfig caliper-benchmark/benchmark.yaml \
-  --caliper-networkconfig caliper-benchmark/network.yaml
-```
-* Nếu xuất hiện lỗi Cannot find module 'besu', chắc chắn bạn đã chạy npx caliper bind --caliper-bind-sut besu:latest trong cùng thư mục.
-* Mọi node phải đang Up và healthy.
