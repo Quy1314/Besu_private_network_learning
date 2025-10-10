@@ -1,10 +1,6 @@
 {
     "caliper": {
-        "blockchain": "ethereum",
-        "command" : {
-            "start": "docker-compose -f ./networks/besu/1node-clique/docker-compose.yml up -d && sleep 60",
-            "end" : "docker-compose -f ./networks/besu/1node-clique/docker-compose.yml down"
-          }
+        "blockchain": "ethereum"
     },
     "ethereum": {
         "url": "ws://localhost:8546",
